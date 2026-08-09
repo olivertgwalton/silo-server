@@ -165,13 +165,26 @@ func buildRemuxArgs(filePath, outputFormat string, seekSeconds float64, transcod
 	if dvProfile == 7 {
 		args = append(args, "-bsf:v", "dovi_rpu=strip=1")
 	} else if (dvProfile == 5 || dvProfile == 8) && tagDVSampleEntry {
-		// FFmpeg carries the DOVI configuration record into MP4 but otherwise
-		// labels copied HEVC as hev1. Media3 keys decoder selection from the
-		// sample entry, so retain an explicit Dolby Vision tag as well.
-		// dvhe keeps FFmpeg's dvvC box; forcing dvh1 makes FFmpeg 7.1 omit it.
-		// Only the explicit v3 preserve recipe opts in: legacy web/jellycompat
-		// consumers keep the pre-v3 hev1 labeling their demuxers accept.
-		args = append(args, "-tag:v", "dvhe")
+		// FFmpeg otherwise labels copied HEVC as hev1, which sends decoders
+		// down the plain-HEVC path: Media3 keys selection off the sample
+		// entry, and AVPlayer only engages its Dolby Vision decoder for dvh1
+		// in fMP4/HLS.
+		//
+		// `-strict experimental` is what makes FFmpeg 8 carry the DOVI
+		// configuration record (dvcC) through a stream copy. Without it the
+		// box is dropped and the tag alone is meaningless — a file that
+		// claims Dolby Vision and decodes as raw HEVC, which for the
+		// non-cross-compatible Profile 5 is visibly wrong rather than a
+		// graceful downgrade.
+		//
+		// FFmpeg 7 cannot honour this recipe at all: it rejects the dvhe tag
+		// for a copied HEVC stream ("Tag dvhe incompatible with output codec
+		// id") and drops the box when forced to dvh1. `supportsDVCopyTagging`
+		// gates the whole preserve route on the toolchain that will run it.
+		// Only the explicit v3 preserve recipe opts in: legacy
+		// web/jellycompat consumers keep the hev1 labeling their demuxers
+		// accept.
+		args = append(args, "-tag:v", "dvh1", "-strict", "experimental")
 	}
 
 	if transcodeAudio {
@@ -259,6 +272,15 @@ func StartRemuxWithDVMode(ctx context.Context, filePath, outputFormat string, se
 			// dangle. Callers must strip to HDR10 or transcode instead.
 			cancel()
 			return nil, fmt.Errorf("Dolby Vision profile 7 cannot be preserved in a progressive remux")
+		}
+		// A toolchain that cannot carry the configuration record through the
+		// copy must not label the output Dolby Vision: hev1 with no dvcC is
+		// an honest plain-HEVC file, where dvh1 with no dvcC is a decoder
+		// trap. The planner's own probe keeps this route off the table, so
+		// reaching here means a session minted before the verdict was known.
+		if !supportsDVCopyTagging(bin) {
+			cancel()
+			return nil, fmt.Errorf("Dolby Vision preservation requires FFmpeg 8 or newer")
 		}
 		tagDVSampleEntry = true
 	case RemuxDVRejectP7V3:

@@ -60,20 +60,24 @@ func TestBuildRemuxArgsKeepsRPUForProfile8AndPlainFiles(t *testing.T) {
 }
 
 // The DV sample entry is an explicit opt-in for the v3 preserve recipe:
-// Media3 keys decoder selection from it, but legacy web/jellycompat consumers
-// rely on the pre-v3 hev1 labeling their demuxers accept.
+// Media3 and AVPlayer both key decoder selection from it, but legacy
+// web/jellycompat consumers rely on the pre-v3 hev1 labeling their demuxers
+// accept. The tag is dvh1 rather than dvhe because FFmpeg 8 rejects dvhe for
+// a copied HEVC stream, and AVPlayer only honours dvh1 in fMP4/HLS.
 func TestBuildRemuxArgsTagsPreservedDolbyVisionOnlyWhenRequested(t *testing.T) {
 	args := buildRemuxArgs("/x.mkv", "mp4", 0, false, -1, 8, true)
-	if !argsContainPair(args, "-tag:v", "dvhe") {
+	if !argsContainPair(args, "-tag:v", "dvh1") {
 		t.Fatalf("preserved Dolby Vision must retain a DV sample entry, args=%v", strings.Join(args, " "))
 	}
-	legacy := buildRemuxArgs("/x.mkv", "mp4", 0, false, -1, 8, false)
-	if argsContainPair(legacy, "-tag:v", "dvhe") {
-		t.Fatalf("legacy remux consumers must keep hev1 labeling, args=%v", strings.Join(legacy, " "))
-	}
-	stripped := buildRemuxArgs("/x.mkv", "mp4", 0, false, -1, 7, false)
-	if argsContainPair(stripped, "-tag:v", "dvhe") {
-		t.Fatalf("HDR10 fallback must not retain a DV sample entry, args=%v", strings.Join(stripped, " "))
+	for _, tag := range []string{"dvh1", "dvhe"} {
+		legacy := buildRemuxArgs("/x.mkv", "mp4", 0, false, -1, 8, false)
+		if argsContainPair(legacy, "-tag:v", tag) {
+			t.Fatalf("legacy remux consumers must keep hev1 labeling, args=%v", strings.Join(legacy, " "))
+		}
+		stripped := buildRemuxArgs("/x.mkv", "mp4", 0, false, -1, 7, false)
+		if argsContainPair(stripped, "-tag:v", tag) {
+			t.Fatalf("HDR10 fallback must not retain a DV sample entry, args=%v", strings.Join(stripped, " "))
+		}
 	}
 }
 
