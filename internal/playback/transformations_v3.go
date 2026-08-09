@@ -34,7 +34,11 @@ func ProbeTransformationRegistryV3(ctx context.Context, ffmpegPath string) *Tran
 	encoders, _ := exec.CommandContext(encoderCtx, ffmpegPath, "-hide_banner", "-encoders").Output()
 	cancelEncoders()
 	_, ffmpegErr := exec.LookPath(ffmpegPath)
+	// Dolby Vision survives a stream copy only on FFmpeg 8+; see
+	// dv_copy_tagging.go for the measurements behind the floor.
+	dvPassthrough := ffmpegErr == nil && supportsDVCopyTagging(ffmpegPath)
 	return NewTransformationRegistryV3([]TransformationSpecV3{
+		{Name: "server_dv_passthrough", RecipeVersion: "1", Available: dvPassthrough, RequiredCapability: "ffmpeg_dv_copy_tagging", PromisedDynamicRange: "dolby_vision", ValidatedClaims: []string{"dolby_vision_preserved", "sample_entry_dvh1", "dovi_configuration_record_preserved"}, TerminalReason: "dv_passthrough_unsupported"},
 		{Name: "server_dv7_to_hdr10", RecipeVersion: "1", Available: bytes.Contains(bsfs, []byte("dovi_rpu")), RequiredCapability: "ffmpeg_bsf:dovi_rpu", PromisedDynamicRange: "hdr10", ValidatedClaims: []string{"dolby_vision_metadata_removed", "hdr10_base_layer_preserved", "enhancement_layer_discarded"}, TerminalReason: "dv_conversion_unsupported"},
 		{Name: "audio_to_aac", RecipeVersion: "1", Available: ffmpegErr == nil && bytes.Contains(encoders, []byte(" aac ")), RequiredCapability: "ffmpeg_encoder:aac", ValidatedClaims: []string{"media3_audio_decode"}, TerminalReason: "audio_conversion_unsupported"},
 		{Name: "video_to_h264", RecipeVersion: "1", Available: ffmpegErr == nil && h264EncoderAvailableV3(encoders), RequiredCapability: "ffmpeg_encoder:h264", PromisedDynamicRange: "sdr", ValidatedClaims: []string{"media3_h264_decode"}, TerminalReason: "video_conversion_unsupported"},

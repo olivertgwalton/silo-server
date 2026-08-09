@@ -353,6 +353,17 @@ func PlanPlaybackV3(input PlannerInputV3) PlannerResultV3 {
 			plan.DegradationWarnings = append(plan.DegradationWarnings, DegradationWarningV3{Code: "dolby_vision_removed", Message: "Dolby Vision metadata is removed and the validated HDR10 base layer is preserved."})
 		}
 		if !dvStrip {
+			// A copied Dolby Vision stream keeps its dvh1 sample entry and
+			// configuration record, so the claim is real rather than a
+			// passthrough of whatever the source happened to be. The session's
+			// RemuxDVMode is derived from this claim, which is what puts the
+			// preserve recipe (and its -strict experimental) on the command
+			// line.
+			if canPreserveDolbyVisionV3(source, input.Request, input.Registry) {
+				plan.Transformations = append(plan.Transformations, TransformationV3{Name: "server_dv_passthrough", Executor: "server", RecipeVersion: "1", ValidatedClaims: []string{"dolby_vision_preserved", "sample_entry_dvh1", "dovi_configuration_record_preserved"}})
+				plan.EffectiveRecipe.DynamicRange = "dolby_vision"
+				plan.Claims.Video = VideoClaimsV3{DolbyVision: true, DolbyVisionReason: "server_dv_passthrough"}
+			}
 			applyCopiedVideoQuirksV3(&plan, source, input.Request, high10Quirk)
 		}
 		// The progressive remux executes on this process's ffmpeg, so its
@@ -506,6 +517,30 @@ func planVideoTranscodeV3(input PlannerInputV3, base PlanV3, source SourceDescri
 		return terminalPlannerResultV3("adaptation_exhausted", "All compatible playback recipes have already failed for this output route.", false)
 	}
 	return PlannerResultV3{Plan: &plan, PlayMethod: PlayTranscode, TranscodeAudio: true, TargetVideoCodec: "h264", TargetAudioCodec: "aac", TargetAudioChannels: targetAudioChannels, TargetResolution: quality.Label, TargetBitrateKbps: quality.BitrateKbps, SubtitleTrackIndex: subtitle.SelectedIndex, SubtitleTransportTrackIndex: subtitle.TransportIndex, SubtitleBurnIn: subtitle.RequiresBurn, SubtitleCodec: subtitle.Codec, DownloadedSubtitleID: subtitle.DownloadedSubtitleID}
+}
+
+// canPreserveDolbyVisionV3 reports whether a stream copy can hand this source
+// to the client with its Dolby Vision intact.
+//
+// Profiles 5 and 8 are single-layer, so a base-layer-only remux loses nothing.
+// Profile 7 is excluded: the remux maps only the base layer, so its
+// enhancement layer would be dropped and the RPUs left dangling — that source
+// belongs on the HDR10 strip or the client's own conversion.
+//
+// The toolchain gate matters as much as the profile: below FFmpeg 8 the copy
+// silently drops the configuration record, which would leave the output
+// claiming Dolby Vision while decoding as plain HEVC.
+func canPreserveDolbyVisionV3(source SourceDescriptorV3, request StartRequestV3, registry *TransformationRegistryV3) bool {
+	if source.DynamicRange != "dolby_vision" {
+		return false
+	}
+	if source.DVProfile != 5 && source.DVProfile != 8 {
+		return false
+	}
+	if registry == nil || !registry.Available("server_dv_passthrough") {
+		return false
+	}
+	return clientSupportsDVProfileV3(request, source.DVProfile)
 }
 
 func canStripDolbyVisionToHDR10V3(source SourceDescriptorV3, request StartRequestV3, registry *TransformationRegistryV3) bool {
