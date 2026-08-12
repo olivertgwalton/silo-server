@@ -465,6 +465,7 @@ type sectionItemResponse struct {
 	PosterThumbhash   string                 `json:"poster_thumbhash,omitempty"`
 	BackdropURL       string                 `json:"backdrop_url,omitempty"`
 	BackdropThumbhash string                 `json:"backdrop_thumbhash,omitempty"`
+	SeriesBackdropURL string                 `json:"series_backdrop_url,omitempty"`
 	LogoURL           string                 `json:"logo_url,omitempty"`
 	OverlaySummary    *models.OverlaySummary `json:"overlay_summary,omitempty"`
 	Badges            []string               `json:"badges,omitempty"`
@@ -1200,9 +1201,10 @@ type sectionItemImageKey struct {
 }
 
 type sectionItemImageURLs struct {
-	posterURL   string
-	backdropURL string
-	logoURL     string
+	posterURL         string
+	backdropURL       string
+	seriesBackdropURL string
+	logoURL           string
 }
 
 func (h *SectionHandler) buildSectionsResponse(r *http.Request, withItems []sections.SectionWithItems) homeSectionsResponse {
@@ -1238,9 +1240,11 @@ func (h *SectionHandler) buildSectionsResponse(r *http.Request, withItems []sect
 		allItems = append(allItems, s.Items...)
 	}
 	userStates := h.listSectionItemUserStates(r, allItems)
-	imageURLs := h.resolveSectionItemImageURLs(r.Context(), withItems)
 	episodeMeta := h.listSectionEpisodeItemMeta(r.Context(), withItems, requestAccessFilter(r))
 	mangaChapterMeta := h.listSectionMangaChapterItemMeta(r.Context(), allItems)
+	// After the episode meta, which is where an episode's series backdrop comes
+	// from — it has to go into the same presign batch as every other image.
+	imageURLs := h.resolveSectionItemImageURLs(r.Context(), withItems, episodeMeta)
 	for _, s := range withItems {
 		items := make([]sectionItemResponse, 0, len(s.Items))
 		for _, item := range s.Items {
@@ -1347,17 +1351,18 @@ func (h *SectionHandler) listSectionEpisodeItemMeta(ctx context.Context, withIte
 	return meta
 }
 
-func (h *SectionHandler) resolveSectionItemImageURLs(ctx context.Context, withItems []sections.SectionWithItems) map[sectionItemImageKey]sectionItemImageURLs {
+func (h *SectionHandler) resolveSectionItemImageURLs(ctx context.Context, withItems []sections.SectionWithItems, episodeMeta map[string]sections.SectionItemMeta) map[sectionItemImageKey]sectionItemImageURLs {
 	result := make(map[sectionItemImageKey]sectionItemImageURLs)
 	if h.DetailSvc == nil {
 		return result
 	}
 
 	type pendingImages struct {
-		key          sectionItemImageKey
-		posterPath   string
-		backdropPath string
-		logoPath     string
+		key                sectionItemImageKey
+		posterPath         string
+		backdropPath       string
+		seriesBackdropPath string
+		logoPath           string
 	}
 
 	pending := make([]pendingImages, 0)
@@ -1379,6 +1384,10 @@ func (h *SectionHandler) resolveSectionItemImageURLs(ctx context.Context, withIt
 			if item == nil {
 				continue
 			}
+			seriesBackdrop := section.ItemMeta[item.ContentID].SeriesBackdropPath
+			if seriesBackdrop == "" {
+				seriesBackdrop = episodeMeta[item.ContentID].SeriesBackdropPath
+			}
 			images := pendingImages{
 				key: sectionItemImageKey{
 					sectionID: section.ID,
@@ -1386,11 +1395,16 @@ func (h *SectionHandler) resolveSectionItemImageURLs(ctx context.Context, withIt
 				},
 				posterPath:   featuredPosterPath(item.PosterPath),
 				backdropPath: sectionBackdropPath(section.SectionType, item.BackdropPath),
-				logoPath:     item.LogoPath,
+				// Sized like any other featured backdrop rather than like the
+				// Continue Watching still it travels beside — this one exists
+				// to be shown large.
+				seriesBackdropPath: featuredBackdropPath(seriesBackdrop),
+				logoPath:           item.LogoPath,
 			}
 			pending = append(pending, images)
 			addPath(images.posterPath)
 			addPath(images.backdropPath)
+			addPath(images.seriesBackdropPath)
 			addPath(images.logoPath)
 		}
 	}
@@ -1398,9 +1412,10 @@ func (h *SectionHandler) resolveSectionItemImageURLs(ctx context.Context, withIt
 	resolved := h.DetailSvc.PresignURLsWithExpiry(ctx, paths, "featured")
 	for _, images := range pending {
 		result[images.key] = sectionItemImageURLs{
-			posterURL:   resolved[images.posterPath].URL,
-			backdropURL: resolved[images.backdropPath].URL,
-			logoURL:     resolved[images.logoPath].URL,
+			posterURL:         resolved[images.posterPath].URL,
+			backdropURL:       resolved[images.backdropPath].URL,
+			seriesBackdropURL: resolved[images.seriesBackdropPath].URL,
+			logoURL:           resolved[images.logoPath].URL,
 		}
 	}
 	return result
@@ -1454,6 +1469,10 @@ func (h *SectionHandler) toSectionItemResponse(sectionType sections.SectionType,
 
 	resp.PosterURL = imageURLs.posterURL
 	resp.BackdropURL = imageURLs.backdropURL
+	// Set on episodes only, beside the still in BackdropURL rather than
+	// replacing it: a card wants the still, anything showing an episode large
+	// wants the series' backdrop.
+	resp.SeriesBackdropURL = imageURLs.seriesBackdropURL
 	resp.LogoURL = imageURLs.logoURL
 
 	return resp
