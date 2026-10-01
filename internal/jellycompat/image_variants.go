@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Silo-Server/silo-server/internal/artworkkey"
 	"github.com/Silo-Server/silo-server/internal/catalog"
 	"github.com/Silo-Server/silo-server/internal/imagesize"
 )
@@ -21,6 +22,12 @@ const (
 // compatBackdropImageType is Jellyfin's name for a backdrop, which is the one
 // image type this layer defaults to a hero size rather than a card size.
 const compatBackdropImageType = "Backdrop"
+
+// compatServesBackdrop reports whether a Jellyfin image type resolves to the
+// item's backdrop: a Backdrop, or a Thumb, which this layer serves from it.
+func compatServesBackdrop(imageType string) bool {
+	return strings.EqualFold(imageType, compatBackdropImageType) || strings.EqualFold(imageType, "Thumb")
+}
 
 func compatPresignImage(detailSvc *catalog.DetailService, ctx context.Context, path, imageType, size string) string {
 	return compatPresignImageWithExpiry(detailSvc, ctx, path, imageType, size).URL
@@ -62,6 +69,13 @@ func compatRequestImageSize(r *http.Request, imageType string) string {
 	case maxDim <= 320:
 		return compatCardImageSize
 	case maxDim >= 1200:
+		// A backdrop's original keeps up to 4K, so a client asking for no more
+		// than the widest rung (Neptune, Infuse and Swiftfin ask maxWidth=1920)
+		// gets that rung: the same bytes the original was when it was capped
+		// at 1920. Only a request beyond it is worth the original.
+		if compatServesBackdrop(imageType) && maxDim <= artworkkey.VariantWidths(artworkkey.ImageBackdrop)[0] {
+			return compatLargeImageSize
+		}
 		return compatOriginalImageSize
 	case maxWidthDim >= 780:
 		// The ladder now carries a rung between the pre-existing default and

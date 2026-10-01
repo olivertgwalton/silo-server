@@ -59,14 +59,18 @@ looks wrong.
 | --- | --- | --- | --- | --- |
 | poster | 300 | 500 | 780 | up to 1920 |
 | still | 300 | 500 | 780 | up to 1920 |
-| backdrop | 300 | 1920 | 1920 | up to 1920 |
+| backdrop | 300 | 1920 | 1920 | up to 3840 |
 | logo | 500 | 500 | 1280 | up to 1920 |
 | profile | 300 | 500 | 500 | up to 1920 |
 
 `medium` is the width the server chose before this parameter existed, which is
 why it is not always the middle rung. `original` is the cached original, capped
-on ingest at 1920px on its longest edge — it is not the provider's untouched
-file.
+on ingest on its longest edge — it is not the provider's untouched file. A
+backdrop keeps up to 3840px, the width of a 4K screen, because it is drawn
+full-bleed on 4K televisions and high-density phones; every other type keeps
+up to 1920px, since none is drawn wider than its widest rung. Artwork cached
+before the backdrop cap was raised keeps its 1920px original until it is
+cached again.
 
 Artwork hosted by a metadata plugin rather than cached in the bucket has no
 fixed width. For those the size is forwarded to the plugin as a semantic variant
@@ -110,15 +114,20 @@ GET /api/v2/images/capabilities
   "season_list_artwork_param": "include_artwork",
   "sizes": ["small", "medium", "large", "original"],
   "widths": {
-    "poster": { "small": 300, "medium": 500, "large": 780 },
-    "backdrop": { "small": 300, "medium": 1920, "large": 1920 },
-    "still": { "small": 300, "medium": 500, "large": 780 },
-    "logo": { "small": 500, "medium": 500, "large": 1280 },
-    "profile": { "small": 300, "medium": 500, "large": 500 }
+    "poster": { "small": 300, "medium": 500, "large": 780, "original_max_px": 1920 },
+    "backdrop": { "small": 300, "medium": 1920, "large": 1920, "original_max_px": 3840 },
+    "still": { "small": 300, "medium": 500, "large": 780, "original_max_px": 1920 },
+    "logo": { "small": 500, "medium": 500, "large": 1280, "original_max_px": 1920 },
+    "profile": { "small": 300, "medium": 500, "large": 500, "original_max_px": 1920 }
   },
-  "original_max_width_px": 1920
+  "original_max_width_px": 3840
 }
 ```
+
+`original_max_px` is the longest edge of that type's cached original.
+`original_max_width_px` is the largest of them, so it bounds `original` for
+every type. The frozen v1 `GET /api/v1/images/capability` reports the same
+`original_max_width_px` and has no per-type `original_max_px`.
 
 Read `state` before sending `image_size`: anything other than `available` means the
 server will not honor the parameter, so keep using its per-context defaults.
@@ -177,7 +186,11 @@ response semantics.
 The Jellyfin-protocol surface maps its own `MaxWidth`/`MaxHeight`/`FillWidth`/
 `FillHeight` parameters onto the same ladder: up to 320px is `small`, 780px to
 1199px is `large`, 1200px and above is `original`, and everything else is
-`medium`.
+`medium`. A `Backdrop` or `Thumb` request is the exception at the top: it gets
+`original` only above the widest backdrop rung (1920px), and `large` (w1920) up
+to it, so a client asking for `maxWidth=1920` receives the same image it did
+when every original was capped at 1920px. A `Primary` request that falls back
+to an item's backdrop never takes the backdrop's original.
 
 The shared cached-artwork resolver applies the same persisted availability
 selection to Jellyfin image URL resolution. Its protocol parameters and image

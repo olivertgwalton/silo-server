@@ -7,7 +7,6 @@ import (
 	"github.com/Silo-Server/silo-server/internal/artworkkey"
 	"github.com/Silo-Server/silo-server/internal/blobstore"
 	"github.com/Silo-Server/silo-server/internal/imagesize"
-	"github.com/Silo-Server/silo-server/internal/imageutil"
 )
 
 const (
@@ -56,7 +55,9 @@ type ImagesCapabilityResponse struct {
 	// requests from these numbers stays correct across ladder changes.
 	Widths map[string]ImageSizeWidths `json:"widths"`
 	// OriginalMaxWidthPx bounds the "original" size: cached originals are
-	// downscaled to this on ingest, so asking for original never yields more.
+	// downscaled on ingest so their longest edge is at most this, so asking for
+	// original never yields more. The bound is per image type
+	// (artworkkey.OriginalMaxDimension); this is the largest of them.
 	OriginalMaxWidthPx int    `json:"original_max_width_px"`
 	StorageBackend     string `json:"-"`
 	Delivery           string `json:"-"`
@@ -75,7 +76,9 @@ func GetImagesCapability(backend ...string) ImagesCapabilityResponse {
 		storageBackend, delivery = blobstore.BackendS3, artworkDeliveryDirect
 	}
 	widths := make(map[string]ImageSizeWidths, len(imageTypesWithWidths))
+	originalMax := 0
 	for _, imageType := range imageTypesWithWidths {
+		originalMax = max(originalMax, artworkkey.OriginalMaxDimension(imageType))
 		widths[imageType] = ImageSizeWidths{
 			Small:  variantWidthPx(imageType, imagesize.Small),
 			Medium: variantWidthPx(imageType, imagesize.Medium),
@@ -89,7 +92,7 @@ func GetImagesCapability(backend ...string) ImagesCapabilityResponse {
 		Param:                  imagesize.QueryParam,
 		Sizes:                  imagesize.All,
 		Widths:                 widths,
-		OriginalMaxWidthPx:     imageutil.MaxCachedOriginalDimension,
+		OriginalMaxWidthPx:     originalMax,
 		StorageBackend:         storageBackend,
 		Delivery:               delivery,
 	}

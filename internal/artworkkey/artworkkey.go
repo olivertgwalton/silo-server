@@ -117,6 +117,27 @@ func VariantWidths(imageType string) []int {
 	}
 }
 
+// DefaultOriginalMaxDimension is the longest edge a cached original keeps for
+// every artwork type except a backdrop. Those types are never drawn wider than
+// their widest rung, so storing more pixels would cost space and no client
+// would draw them.
+const DefaultOriginalMaxDimension = 1920
+
+// OriginalMaxDimension returns the longest edge, in pixels, that a cached
+// "original" of an artwork type is downscaled to on ingest. A client asking for
+// the original never receives more pixels than this.
+//
+// A backdrop keeps up to 3840, the width of a 4K UHD screen: it is drawn
+// full-bleed on 4K televisions and high-density phones, where its widest rung
+// (1920) is upscaled. Rungs are unaffected, so only a client that asks for the
+// original receives the larger image.
+func OriginalMaxDimension(imageType string) int {
+	if strings.EqualFold(strings.TrimSpace(imageType), ImageBackdrop) {
+		return 3840
+	}
+	return DefaultOriginalMaxDimension
+}
+
 // VariantNames returns the cached variants generated for an artwork type.
 func VariantNames(imageType string) []string {
 	widths := VariantWidths(imageType)

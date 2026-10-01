@@ -36,8 +36,8 @@ const (
 	Medium Size = "medium"
 	// Large is the widest cached rung short of the original.
 	Large Size = "large"
-	// Original is the cached original, capped at
-	// imageutil.MaxCachedOriginalDimension on ingest.
+	// Original is the cached original, its longest edge capped on ingest at
+	// artworkkey.OriginalMaxDimension for its image type.
 	Original Size = "original"
 )
 

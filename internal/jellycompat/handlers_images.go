@@ -625,8 +625,14 @@ func (h *ImagesHandler) imageURLForItem(ctx context.Context, primaryPath, primar
 	primaryURL := func() catalog.ResolvedImageURL {
 		return compatPresignImageWithExpiry(h.detailSvc, ctx, primaryPath, primaryImageType, size)
 	}
+	backdropSize := size
+	if imageType == compatImagePrimary && size == compatOriginalImageSize {
+		// A Primary request reaches the backdrop only for an item with no
+		// poster; it keeps the widest rung rather than a 4K original.
+		backdropSize = compatLargeImageSize
+	}
 	backdropURL := func() catalog.ResolvedImageURL {
-		return compatPresignImageWithExpiry(h.detailSvc, ctx, backdropPath, "backdrop", size)
+		return compatPresignImageWithExpiry(h.detailSvc, ctx, backdropPath, "backdrop", backdropSize)
 	}
 
 	switch imageType {

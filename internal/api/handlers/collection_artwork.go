@@ -174,7 +174,9 @@ func putCollectionImageVariants(
 	if store == nil {
 		return "", "", fmt.Errorf("image upload requires configured S3 storage")
 	}
-	result, err := imageutil.GenerateVariants(fileData, widths)
+	// A collection's backdrop is served as its original by default (it has
+	// no hero rung), so it keeps the default cap rather than a backdrop's 4K.
+	result, err := imageutil.GenerateVariants(fileData, widths, artworkkey.DefaultOriginalMaxDimension)
 	if err != nil {
 		return "", "", fmt.Errorf("generating image variants: %w", err)
 	}

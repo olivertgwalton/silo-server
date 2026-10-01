@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Silo-Server/silo-server/internal/api/handlers"
+	"github.com/Silo-Server/silo-server/internal/artworkkey"
 	"github.com/Silo-Server/silo-server/internal/imagesize"
 	"github.com/Silo-Server/silo-server/internal/jellycompat"
 )
@@ -51,7 +52,10 @@ func registerOperationalDiscovery(reg *Registry) {
 			view := handlers.GetImagesCapability(reg.deps.ArtworkBackend)
 			widths := make(map[string]ImageSizeWidths, len(view.Widths))
 			for key, value := range view.Widths {
-				widths[key] = ImageSizeWidths(value)
+				widths[key] = ImageSizeWidths{
+					Small: value.Small, Medium: value.Medium, Large: value.Large,
+					OriginalMaxPx: artworkkey.OriginalMaxDimension(key),
+				}
 			}
 			return &ImageCapabilitiesOutput{Body: ImageCapabilities{
 				SeasonListArtworkParam: view.SeasonListArtworkParam,
@@ -78,7 +82,8 @@ type CompatConnectInfoResponse struct {
 
 // ImageSizeWidths is the native transport projection, independent of handler views.
 type ImageSizeWidths struct {
-	Small  int `json:"small"`
-	Medium int `json:"medium"`
-	Large  int `json:"large"`
+	Small         int `json:"small"`
+	Medium        int `json:"medium"`
+	Large         int `json:"large"`
+	OriginalMaxPx int `json:"original_max_px" doc:"Longest edge, in pixels, of this type's cached original; image_size=original never returns more"`
 }

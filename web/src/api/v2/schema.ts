@@ -20572,6 +20572,11 @@ export interface components {
       large: number;
       /** Format: int64 */
       medium: number;
+      /**
+       * Format: int64
+       * @description Longest edge, in pixels, of this type's cached original; image_size=original never returns more
+       */
+      original_max_px: number;
       /** Format: int64 */
       small: number;
     };

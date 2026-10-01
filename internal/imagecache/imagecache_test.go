@@ -592,6 +592,37 @@ func TestCache_CapsLargeOriginalVariant(t *testing.T) {
 	}
 }
 
+func TestCacheBytes_CapsOriginalPerImageType(t *testing.T) {
+	data := makeTestPNG(t, 3840, 2160)
+	for _, tc := range []struct {
+		imageType metadata.ImageType
+		wantWidth int
+	}{
+		{metadata.ImageBackdrop, 3840},
+		{metadata.ImagePoster, 1920},
+	} {
+		t.Run(metadata.ImageTypeToString(tc.imageType), func(t *testing.T) {
+			s3 := &mockS3{bucket: "media"}
+			result, err := newWithHTTPClient(s3, nil).CacheBytes(context.Background(), data, CacheRequest{
+				ProviderID:  testTMDBProviderID,
+				ContentType: testMoviesContentType,
+				ContentID:   "550",
+				ImageType:   tc.imageType,
+			})
+			if err != nil {
+				t.Fatalf("CacheBytes: %v", err)
+			}
+			size, err := bimg.NewImage(s3.objectData(result.OriginalPath)).Size()
+			if err != nil {
+				t.Fatalf("reading original.webp size: %v", err)
+			}
+			if size.Width != tc.wantWidth {
+				t.Fatalf("original.webp width = %d, want %d", size.Width, tc.wantWidth)
+			}
+		})
+	}
+}
+
 func TestCache_LocalizedPosterUsesLanguageScopedPath(t *testing.T) {
 	jpeg := makeTestJPEG(t)
 	srv := startImageServer(t, jpeg, http.StatusOK)

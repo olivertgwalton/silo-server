@@ -3,6 +3,7 @@ package branding
 import (
 	"fmt"
 
+	"github.com/Silo-Server/silo-server/internal/artworkkey"
 	"github.com/Silo-Server/silo-server/internal/imageutil"
 )
 
@@ -27,14 +28,14 @@ var assetSpecs = map[AssetKind]assetSpec{
 		settingKey: "branding.wordmark_ref",
 		s3Prefix:   "branding/wordmark",
 		maxBytes:   8 << 20,
-		process:    processWebP(imageutil.GenerateVariants, 640),
+		process:    processWebP(generateVariants, 640),
 	},
 	KindWordmarkLight: {
 		kind:       KindWordmarkLight,
 		settingKey: "branding.wordmark_light_ref",
 		s3Prefix:   "branding/wordmark-light",
 		maxBytes:   8 << 20,
-		process:    processWebP(imageutil.GenerateVariants, 640),
+		process:    processWebP(generateVariants, 640),
 	},
 	KindMark: {
 		kind:       KindMark,
@@ -62,7 +63,7 @@ var assetSpecs = map[AssetKind]assetSpec{
 		settingKey: "branding.login_bg_ref",
 		s3Prefix:   "branding/login-bg",
 		maxBytes:   12 << 20,
-		process:    processWebP(imageutil.GenerateVariants, 2560),
+		process:    processWebP(generateVariants, 2560),
 	},
 }
 
@@ -73,7 +74,13 @@ var imageUploadTypes = map[string]bool{
 	"image/webp": true,
 }
 
-// imageVariantFunc matches imageutil.GenerateVariants / GenerateSquareVariants.
+// generateVariants is imageutil.GenerateVariants at the default original cap.
+// A branding asset stores a single rung, never the original.
+func generateVariants(data []byte, sizes []int) (*imageutil.VariantResult, error) {
+	return imageutil.GenerateVariants(data, sizes, artworkkey.DefaultOriginalMaxDimension)
+}
+
+// imageVariantFunc matches generateVariants / imageutil.GenerateSquareVariants.
 type imageVariantFunc func(data []byte, sizes []int) (*imageutil.VariantResult, error)
 
 // processWebP re-encodes any accepted image to a size-capped WebP using the

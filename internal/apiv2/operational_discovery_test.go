@@ -70,6 +70,13 @@ func TestOperationalDiscoveryImageLadderAndOptionalProfile(t *testing.T) {
 		if !ok || width.Small != expected.Small || width.Medium != expected.Medium || width.Large != expected.Large {
 			t.Fatalf("image width %s: got %+v, want %+v", key, width, expected)
 		}
+		// The scalar stays a true upper bound over every per-type original.
+		if width.OriginalMaxPx < width.Large || width.OriginalMaxPx > actual.OriginalMaxWidthPx {
+			t.Fatalf("image width %s: original_max_px %d outside [large %d, original_max_width_px %d]", key, width.OriginalMaxPx, width.Large, actual.OriginalMaxWidthPx)
+		}
+	}
+	if actual.OriginalMaxWidthPx != 3840 || actual.Widths["backdrop"].OriginalMaxPx != 3840 || actual.Widths["poster"].OriginalMaxPx != 1920 {
+		t.Fatalf("original bounds: scalar %d, backdrop %d, poster %d; want 3840, 3840, 1920", actual.OriginalMaxWidthPx, actual.Widths["backdrop"].OriginalMaxPx, actual.Widths["poster"].OriginalMaxPx)
 	}
 	requireProblem(t, do(t, handler, http.MethodGet, Prefix+"/images/capabilities", "", nil), TypeAuthenticationRequired)
 	requireProblem(t, do(t, handler, http.MethodGet, Prefix+"/images/capabilities", "", with(bearer(memberToken), "X-Profile-Id", "p-locked")), TypeProfileVerificationRequired)

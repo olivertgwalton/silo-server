@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/h2non/bimg"
+
+	"github.com/Silo-Server/silo-server/internal/artworkkey"
 )
 
 func TestGenerateVariantsPreservesEncodes(t *testing.T) {
@@ -14,7 +16,7 @@ func TestGenerateVariantsPreservesEncodes(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			data := largeTestJPEG(t, size[0], size[1])
 			widths := []int{300, 1920, 500, 780, 500}
-			got, err := GenerateVariants(data, widths)
+			got, err := GenerateVariants(data, widths, artworkkey.DefaultOriginalMaxDimension)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -28,7 +30,7 @@ func TestGenerateVariantsPreservesEncodes(t *testing.T) {
 				opts := bimg.Options{Type: bimg.WEBP, Quality: webpQuality, StripMetadata: true}
 				key := "original"
 				if i == 0 {
-					fitWithin(&opts, bimg.ImageSize{Width: size[0], Height: size[1]}, MaxCachedOriginalDimension)
+					fitWithin(&opts, bimg.ImageSize{Width: size[0], Height: size[1]}, artworkkey.DefaultOriginalMaxDimension)
 				} else {
 					key = fmt.Sprintf("w%d", width)
 					if size[0] > width {
@@ -52,11 +54,45 @@ func TestGenerateVariantsPreservesEncodes(t *testing.T) {
 	}
 }
 
+// TestGenerateVariantsCapsOriginalPerImageType keeps a 4K backdrop's original
+// at 4K while every other type stays at 1920, and leaves the rungs untouched.
+func TestGenerateVariantsCapsOriginalPerImageType(t *testing.T) {
+	data := largeTestJPEG(t, 3840, 2160)
+	wantRung, err := bimg.NewImage(data).Process(bimg.Options{Type: bimg.WEBP, Quality: webpQuality, StripMetadata: true, Width: 1920})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for imageType, wantWidth := range map[string]int{
+		artworkkey.ImageBackdrop: 3840,
+		artworkkey.ImagePoster:   1920,
+		artworkkey.ImageStill:    1920,
+		artworkkey.ImageLogo:     1920,
+		artworkkey.ImageProfile:  1920,
+	} {
+		t.Run(imageType, func(t *testing.T) {
+			got, err := GenerateVariants(data, []int{1920}, artworkkey.OriginalMaxDimension(imageType))
+			if err != nil {
+				t.Fatal(err)
+			}
+			original, err := bimg.NewImage(got.Variants[0].Data).Size()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Variants[0].Key != "original" || original.Width != wantWidth || original.Height != wantWidth*9/16 {
+				t.Fatalf("original %s = %dx%d, want %dx%d", got.Variants[0].Key, original.Width, original.Height, wantWidth, wantWidth*9/16)
+			}
+			if got.Variants[1].Key != "w1920" || !bytes.Equal(got.Variants[1].Data, wantRung) {
+				t.Fatal("w1920 differs from an independent encode")
+			}
+		})
+	}
+}
+
 func TestEncodeWebPWidthMatchesVariantRung(t *testing.T) {
 	for _, size := range [][2]int{{1920, 1080}, {200, 120}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			data := largeTestJPEG(t, size[0], size[1])
-			variants, err := GenerateVariants(data, []int{300})
+			variants, err := GenerateVariants(data, []int{300}, artworkkey.DefaultOriginalMaxDimension)
 			if err != nil {
 				t.Fatal(err)
 			}

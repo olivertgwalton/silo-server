@@ -26658,6 +26658,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "original_max_px": {
+            "description": "Longest edge, in pixels, of this type's cached original; image_size=original never returns more",
+            "format": "int64",
+            "type": "integer"
+          },
           "small": {
             "format": "int64",
             "type": "integer"
@@ -26666,7 +26671,8 @@
         "required": [
           "small",
           "medium",
-          "large"
+          "large",
+          "original_max_px"
         ],
         "type": "object"
       },

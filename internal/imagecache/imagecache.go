@@ -232,7 +232,8 @@ func (c *Cacher) CacheBytes(ctx context.Context, data []byte, req CacheRequest) 
 		return nil, fmt.Errorf("imagecache: thumbhash: %w", err)
 	}
 	widths := variantWidths(req.ImageType)
-	result, err := imageutil.GenerateVariants(data, widths)
+	originalMaxDim := artworkkey.OriginalMaxDimension(metadata.ImageTypeToString(req.ImageType))
+	result, err := imageutil.GenerateVariants(data, widths, originalMaxDim)
 	if err != nil {
 		return nil, fmt.Errorf("imagecache: generate variants: %w", err)
 	}

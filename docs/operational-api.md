@@ -12,7 +12,10 @@ uses this v2 operation.
 
 `GET /api/v2/images/capabilities` reports capability `revision` and `state`, the
 query parameter `param`, ordered `sizes`, per-artwork-type `widths`, and
-`original_max_width_px`. Widths come from the current variant ladder. The image
+`original_max_width_px`. Widths come from the current variant ladder; each type
+also reports `original_max_px`, the longest edge of its cached original, and
+`original_max_width_px` is the largest of those. The frozen v1 read has no
+per-type `original_max_px`. The image
 operation accepts account-only requests; when an acting profile is supplied,
 viewer-access and PIN verification still apply. This preserves the bridge gate.
 The v2 response uses capability revision/state instead of legacy `schema_version`.

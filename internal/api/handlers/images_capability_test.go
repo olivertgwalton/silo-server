@@ -8,7 +8,6 @@ import (
 
 	"github.com/Silo-Server/silo-server/internal/artworkkey"
 	"github.com/Silo-Server/silo-server/internal/imagesize"
-	"github.com/Silo-Server/silo-server/internal/imageutil"
 )
 
 func TestHandleImagesCapability(t *testing.T) {
@@ -42,8 +41,24 @@ func TestHandleImagesCapability(t *testing.T) {
 			t.Errorf("sizes[%d] = %q, want %q", i, got.Sizes[i], want)
 		}
 	}
-	if got.OriginalMaxWidthPx != imageutil.MaxCachedOriginalDimension {
-		t.Errorf("original_max_width_px = %d, want %d", got.OriginalMaxWidthPx, imageutil.MaxCachedOriginalDimension)
+	// The bound covers every type's original, so it is the backdrop's 4K.
+	if got.OriginalMaxWidthPx != artworkkey.OriginalMaxDimension(artworkkey.ImageBackdrop) || got.OriginalMaxWidthPx != 3840 {
+		t.Errorf("original_max_width_px = %d, want 3840", got.OriginalMaxWidthPx)
+	}
+	for _, imageType := range imageTypesWithWidths {
+		if dim := artworkkey.OriginalMaxDimension(imageType); dim > got.OriginalMaxWidthPx {
+			t.Errorf("%s original max %d exceeds original_max_width_px %d", imageType, dim, got.OriginalMaxWidthPx)
+		}
+	}
+	// The frozen v1 shape carries no per-type original bound.
+	var raw struct {
+		Widths map[string]map[string]any `json:"widths"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(raw.Widths["backdrop"]) != 3 {
+		t.Errorf("v1 backdrop widths = %v, want only small, medium and large", raw.Widths["backdrop"])
 	}
 
 	// Every advertised width must be a real rung on this server's ladder, so a
